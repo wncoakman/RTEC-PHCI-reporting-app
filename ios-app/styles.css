@@ -36,6 +36,38 @@ h1 {
 
 .build-version { color: var(--muted); font-size: 0.72rem; margin: -8px 0 16px; opacity: 0.75; }
 
+/* Home screen SOP reference card ---------------------------------------- */
+
+.sop-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--leaf);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.sop-card__title {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--leaf);
+}
+
+.sop-card__list {
+  margin: 0;
+  padding-left: 1.1em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+.sop-card__list li::marker { color: var(--muted); font-weight: 600; }
+
 /* App bar ---------------------------------------------------------- */
 
 .app-bar {
