@@ -73,6 +73,17 @@
       `;
       main.addEventListener('click', () => openVisit(visit.id));
 
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'visit-row__edit';
+      edit.setAttribute('aria-label', 'Edit visit');
+      edit.title = 'Edit';
+      edit.textContent = '✎';
+      edit.addEventListener('click', (e) => {
+        e.stopPropagation();
+        editVisit(visit.id);
+      });
+
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'visit-row__delete';
@@ -87,25 +98,41 @@
       });
 
       li.appendChild(main);
+      li.appendChild(edit);
       li.appendChild(del);
       list.appendChild(li);
     });
   }
 
+  /** Loads a visit into the Work Performed screen for editing, regardless of its status. */
+  function openForEditing(visit) {
+    state.visitId = visit.id;
+    fillVisitStartForm(visit);
+    fillWorkForm(visit);
+    show('work');
+  }
+
+  // Tapping a visit: drafts open for editing; a Submitted visit instead
+  // re-shows/regenerates its PDF (the common "resend this report" case).
+  // Edit visit data (including findings) explicitly via the ✎ button.
   async function openVisit(id) {
     const visit = await Db.getVisit(id);
     if (!visit) return;
-    state.visitId = id;
 
     if (visit.status === 'Submitted') {
+      state.visitId = id;
       const findings = await Db.listFindings(id);
       await buildAndShowReport(visit, findings);
       return;
     }
 
-    fillVisitStartForm(visit);
-    fillWorkForm(visit);
-    show('work');
+    openForEditing(visit);
+  }
+
+  async function editVisit(id) {
+    const visit = await Db.getVisit(id);
+    if (!visit) return;
+    openForEditing(visit);
   }
 
   function escapeHtml(str) {

@@ -286,8 +286,18 @@ fieldset.field { border: none; padding: 0; margin: 0 0 16px; }
 .visit-row__title { font-weight: 700; color: var(--ink); }
 .visit-row__meta { font-size: 0.78rem; color: var(--muted); }
 
+.visit-row__edit {
+  border: none;
+  border-left: 1px solid var(--line);
+  background: none;
+  color: var(--navy);
+  width: 44px;
+  font-size: 1rem;
+}
+
 .visit-row__delete {
   border: none;
+  border-left: 1px solid var(--line);
   background: none;
   color: var(--danger);
   width: 44px;
