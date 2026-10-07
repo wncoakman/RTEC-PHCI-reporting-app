@@ -70,7 +70,6 @@
     if (!visit.servicesPerformed || visit.servicesPerformed.length === 0) {
       errors.push('At least one service performed is required.');
     }
-    if (!visit.treatmentDetails || !visit.treatmentDetails.trim()) errors.push('Treatment details are required.');
     return { valid: errors.length === 0, errors };
   }
 
