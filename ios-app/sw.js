@@ -11,7 +11,7 @@
  * technicians pick up the update on next launch instead of running stale
  * cached code indefinitely.
  */
-const CACHE_VERSION = 'phc-field-v4';
+const CACHE_VERSION = 'phc-field-v7';
 
 const PRECACHE_URLS = [
   './',

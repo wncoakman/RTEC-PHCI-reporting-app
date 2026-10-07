@@ -68,6 +68,45 @@ h1 {
 
 main#app { max-width: 640px; margin: 0 auto; padding: 18px 16px 40px; }
 
+/* Update banner -------------------------------------------------------- */
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--warn-bg);
+  border-bottom: 1px solid var(--warn-border);
+}
+.update-banner[hidden] { display: none; }
+
+.update-banner__text {
+  flex: 1;
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.update-banner__btn {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--warn-border);
+  border: none;
+  border-radius: 999px;
+}
+
+.update-banner__dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 4px 6px;
+}
+
 /* Screens ------------------------------------------------------------ */
 
 .screen[hidden] { display: none; }

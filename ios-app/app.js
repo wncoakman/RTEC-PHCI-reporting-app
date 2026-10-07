@@ -633,10 +633,57 @@
   window.addEventListener('online', updateNetBadge);
   window.addEventListener('offline', updateNetBadge);
 
+  // -----------------------------------------------------------------
+  // Update banner — a field tech can leave this app running/suspended
+  // for days (it's built to work fully offline), which silently skips
+  // past a bumped sw.js CACHE_VERSION: the browser only checks for a new
+  // service worker on a fresh navigation, and that check doesn't force
+  // the already-loaded page to pick up new JS by itself. Surfacing this
+  // explicitly, rather than relying on "just relaunch it," is what a
+  // past round of fixes (which never reached the field for exactly this
+  // reason) was missing.
+  function showUpdateBanner() {
+    $('#updateBanner').hidden = false;
+  }
+
+  $('#btnUpdateDismiss').addEventListener('click', () => {
+    $('#updateBanner').hidden = true;
+  });
+
+  $('#btnUpdateReload').addEventListener('click', () => {
+    window.location.reload();
+  });
+
+  function watchForServiceWorkerUpdate(registration) {
+    // A worker only reaches "installed" while something is already
+    // controlling this page if it's a genuine update — on a first-ever
+    // install there's no controller yet, so that case never shows the
+    // banner.
+    const hadController = Boolean(navigator.serviceWorker.controller);
+    registration.addEventListener('updatefound', () => {
+      const newWorker = registration.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener('statechange', () => {
+        if (hadController && newWorker.state === 'installed') {
+          showUpdateBanner();
+        }
+      });
+    });
+  }
+
   async function init() {
     updateNetBadge();
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch((err) => console.warn('Service worker registration failed', err));
+      navigator.serviceWorker
+        .register('sw.js')
+        .then((registration) => {
+          watchForServiceWorkerUpdate(registration);
+          // Covers the tech having left the app open/suspended since
+          // before the update: check for a waiting service worker right
+          // now too, not just on the next natural registration event.
+          if (registration.waiting && navigator.serviceWorker.controller) showUpdateBanner();
+        })
+        .catch((err) => console.warn('Service worker registration failed', err));
     }
     await goHome();
   }

@@ -125,6 +125,44 @@ The PDF filename uses the same identifier with spaces turned to hyphens.
   finding photo field used to force the camera open directly
   (`capture="environment"`), with no way to pick an existing photo. Removed
   — the native picker now offers both "Take Photo" and "Photo Library."
+- **Finding photos are always embedded right-side-up, and the finished PDF
+  is always kept under 2.0 MB.** pdf-lib embeds a JPEG's raw pixel bytes
+  and ignores its EXIF orientation tag, so a portrait phone photo (stored
+  as landscape pixels + a "rotate" flag) previously showed up sideways in
+  the PDF even though its in-app preview looked correct (the browser
+  auto-rotates `<img>` previews using that same tag).
+
+  A first fix (decode into `<img>`, trust the browser's auto-rotation, then
+  re-encode through canvas) worked when tested here but **did not fix it in
+  the field** — WebKit/Safari has a long-documented quirk where it rotates
+  an `<img>` for on-screen display but does not carry that same rotation
+  into a `<canvas>` `drawImage()` call for a detached (never-added-to-DOM)
+  image, which is exactly what that approach used. That's invisible to any
+  Chrome-only test, which is how it shipped and was marked "verified" the
+  first time.
+
+  `pdf-report.js` now reads the EXIF Orientation tag straight out of the
+  photo's bytes itself and, once per session, feature-detects — against a
+  tiny embedded reference photo — whether *this* engine's canvas actually
+  picks up `<img>` auto-rotation. If it does (Chrome), nothing changes from
+  the first fix. If it doesn't, the photo is treated as raw and rotated
+  manually via an explicit canvas transform before re-encoding, so the
+  corrected orientation is baked into the pixels either way, independent of
+  which behavior the engine has. That re-encode step is also reused to
+  enforce the size budget: the whole PDF is built at a starting photo
+  quality/resolution, and if the result is over 2.0 MB, it's rebuilt at
+  progressively lower photo quality/resolution (a fixed ladder, largest
+  first) until it fits.
+
+  Verified in-browser: the manual rotation transform matches Pillow's own
+  orientation transforms pixel-for-pixel for all 8 EXIF orientation values,
+  and a forced-fallback run of the actual `generateReportPdf()` (detection
+  pinned to "does not auto-rotate," decode forced to hand back genuinely
+  raw pixels) still produces a correctly-oriented embedded image — so the
+  fallback branch is exercised end to end, not just unit-tested in
+  isolation. **Still not verified on an actual iPad/Safari** — that
+  requires a real device, which wasn't available here; the next field test
+  should confirm.
 
 ## The one thing this can't automate: SingleOps upload
 

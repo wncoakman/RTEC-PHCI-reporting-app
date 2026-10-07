@@ -371,13 +371,174 @@
     return new Uint8Array(await blob.arrayBuffer());
   }
 
-  /** Embeds a photo, scaled (never upscaled) to fit within a bounding box. */
-  async function embedFitted(doc, blob, mimeType, maxWidth, maxHeight) {
-    const bytes = await blobBytes(blob);
-    const image = /png/i.test(mimeType || '') ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+  /** Decodes a photo file into an <img> element (no orientation handling yet — see getOrientedPhotoSource). */
+  async function decodePhotoImage(blob) {
+    const url = URL.createObjectURL(blob);
+    try {
+      return await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('image decode failed'));
+        el.src = url;
+      });
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  /**
+   * Reads the EXIF Orientation tag (APP1 segment) directly from JPEG bytes.
+   * Returns 1 ("normal") if absent or unparseable. This does not depend on
+   * — and is not affected by — whatever orientation handling the browser's
+   * own image decoder does.
+   */
+  function readExifOrientation(arrayBuffer) {
+    const view = new DataView(arrayBuffer);
+    if (view.getUint16(0, false) !== 0xffd8) return 1;
+    const length = view.byteLength;
+    let offset = 2;
+    while (offset < length - 1) {
+      const marker = view.getUint16(offset, false);
+      offset += 2;
+      if (marker === 0xffe1) {
+        if (view.getUint32(offset + 2, false) !== 0x45786966) return 1; // "Exif"
+        const tiffOffset = offset + 8;
+        const little = view.getUint16(tiffOffset, false) === 0x4949;
+        const ifd0Offset = tiffOffset + view.getUint32(tiffOffset + 4, little);
+        const tagCount = view.getUint16(ifd0Offset, little);
+        for (let i = 0; i < tagCount; i++) {
+          const entryOffset = ifd0Offset + 2 + i * 12;
+          if (view.getUint16(entryOffset, little) === 0x0112) {
+            return view.getUint16(entryOffset + 8, little);
+          }
+        }
+        return 1;
+      } else if ((marker & 0xff00) !== 0xff00) {
+        break;
+      } else {
+        offset += view.getUint16(offset, false);
+      }
+    }
+    return 1;
+  }
+
+  /**
+   * Canvas transform for each of the 8 EXIF orientation values, given the
+   * RAW (undecoded-orientation) source bitmap's width/height. Verified
+   * against Pillow's own orientation transforms for all 8 values.
+   */
+  function orientedCanvasFor(orientation, srcW, srcH) {
+    const canvas = document.createElement('canvas');
+    const swapped = orientation >= 5 && orientation <= 8;
+    canvas.width = swapped ? srcH : srcW;
+    canvas.height = swapped ? srcW : srcH;
+    const ctx = canvas.getContext('2d');
+    switch (orientation) {
+      case 2: ctx.transform(-1, 0, 0, 1, srcW, 0); break;
+      case 3: ctx.transform(-1, 0, 0, -1, srcW, srcH); break;
+      case 4: ctx.transform(1, 0, 0, -1, 0, srcH); break;
+      case 5: ctx.transform(0, 1, 1, 0, 0, 0); break;
+      case 6: ctx.transform(0, 1, -1, 0, srcH, 0); break;
+      case 7: ctx.transform(0, -1, -1, 0, srcH, srcW); break;
+      case 8: ctx.transform(0, -1, 1, 0, 0, srcW); break;
+      default: break; // 1: identity, no transform needed
+    }
+    return canvas;
+  }
+
+  // A tiny (4x2px) synthetic JPEG, tagged with EXIF Orientation=6, baked in
+  // once at build time — used only to detect, at runtime, whether this
+  // browser's <img> decode already applies EXIF rotation to what canvas
+  // drawImage() sees. Chrome does; WebKit/Safari has a long-documented
+  // history of rotating the on-screen <img> (which is why in-app previews
+  // always looked right) while NOT rotating the same image when it's the
+  // source of a canvas drawImage() call — exactly the gap that let a
+  // "fixed" (and Chrome-verified) version of this code still ship sideways
+  // photos in the field. Detecting this directly, once per session, is
+  // more robust than assuming either behavior.
+  const EXIF_PROBE_JPEG_B64 =
+    '/9j/4QAiRXhpZgAATU0AKgAAAAgAAQESAAMAAAABAAYAAAAAAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcgLikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYVFSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT0//wAARCAACAAQDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDn6KKK8Y/ST//Z';
+
+  let cachedBrowserAutoRotates = null;
+
+  /** Feature-detects (once per session) whether this engine's <img> decode's orientation survives into canvas drawImage(). */
+  async function browserAutoRotatesForCanvas() {
+    if (cachedBrowserAutoRotates !== null) return cachedBrowserAutoRotates;
+    try {
+      const bin = atob(EXIF_PROBE_JPEG_B64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const img = await decodePhotoImage(new Blob([bytes], { type: 'image/jpeg' }));
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext('2d').drawImage(img, 0, 0);
+      // Source is 4x2 tagged Orientation=6 (rotate 90°): if drawImage() carried
+      // the rotation through, the canvas content (and img.naturalWidth itself)
+      // ends up portrait (2 wide x 4 tall); if not, it stays 4x2 as stored.
+      cachedBrowserAutoRotates = img.naturalWidth === 2 && img.naturalHeight === 4;
+    } catch (err) {
+      cachedBrowserAutoRotates = true; // decode failed — fall back to the original (Chrome-verified) assumption
+    }
+    return cachedBrowserAutoRotates;
+  }
+
+  /**
+   * Resolves a finding photo to whatever should actually be drawn into the
+   * PDF: the browser-decoded <img> as-is when this engine's canvas draws
+   * already carry its EXIF rotation (verified per-session via the probe
+   * above), or — when they don't — a canvas we've rotated ourselves from
+   * the EXIF Orientation tag we read directly out of the file's bytes.
+   */
+  async function getOrientedPhotoSource(blob) {
+    const img = await decodePhotoImage(blob);
+    const arrayBuffer = await blob.arrayBuffer();
+    const orientation = readExifOrientation(arrayBuffer);
+    if (orientation === 1 || (await browserAutoRotatesForCanvas())) {
+      return { source: img, width: img.naturalWidth, height: img.naturalHeight };
+    }
+    const canvas = orientedCanvasFor(orientation, img.naturalWidth, img.naturalHeight);
+    canvas.getContext('2d').drawImage(img, 0, 0);
+    return { source: canvas, width: canvas.width, height: canvas.height };
+  }
+
+  /** Re-encodes an oriented photo source ({source, width, height}) as JPEG, downscaled to maxDimension on its longest side, at the given quality. */
+  function encodePhotoJpeg(oriented, maxDimension, quality) {
+    const scale = Math.min(1, maxDimension / Math.max(oriented.width, oriented.height));
+    const w = Math.max(1, Math.round(oriented.width * scale));
+    const h = Math.max(1, Math.round(oriented.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(oriented.source, 0, 0, w, h);
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas encode failed'))), 'image/jpeg', quality);
+    });
+  }
+
+  /** Embeds an oriented photo source, scaled (never upscaled) to fit within a bounding box, re-encoded at the given size/quality budget. */
+  async function embedFitted(doc, orientedSource, photoSettings, maxWidth, maxHeight) {
+    const jpegBlob = await encodePhotoJpeg(orientedSource, photoSettings.maxDimension, photoSettings.quality);
+    const bytes = await blobBytes(jpegBlob);
+    const image = await doc.embedJpg(bytes);
     const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
     return { image, width: image.width * scale, height: image.height * scale };
   }
+
+  // Successive quality/size budgets tried, largest first, until the whole
+  // PDF fits under MAX_PDF_BYTES. Kept as a fixed ladder (rather than a
+  // binary search) since each step is cheap and reports rarely need more
+  // than the first one or two.
+  const PHOTO_SIZE_STEPS = [
+    { maxDimension: 1600, quality: 0.78 },
+    { maxDimension: 1400, quality: 0.7 },
+    { maxDimension: 1200, quality: 0.62 },
+    { maxDimension: 1000, quality: 0.55 },
+    { maxDimension: 850, quality: 0.48 },
+    { maxDimension: 700, quality: 0.4 },
+    { maxDimension: 550, quality: 0.35 },
+  ];
+  const MAX_PDF_BYTES = 2 * 1000 * 1000; // 2.0 MB deliverable ceiling
 
   /** Renders one plant/area entry's conditions as a single cell string. */
   function conditionsCell(entry) {
@@ -407,149 +568,185 @@
    */
   async function generateReportPdf(visit, findings) {
     const reportId = window.PhcLogic.reportId(visit);
+    const findingList = findings || [];
 
-    const doc = await PDFDocument.create();
-    doc.setTitle(`${reportId} — ${visit.visitType}`);
-    doc.setProducer('RTEC PHC Field Reporting (offline)');
-
-    const fonts = {
-      regular: await doc.embedFont(StandardFonts.Helvetica),
-      bold: await doc.embedFont(StandardFonts.HelveticaBold),
-    };
-
-    let logo = null;
-    const logoBytes = await loadLogoBytes();
-    if (logoBytes) {
+    // Decode (and thereby orientation-correct) every finding photo exactly
+    // once. Each size attempt below re-encodes from this same oriented
+    // source rather than re-decoding the original file each time.
+    const decodedPhotos = new Map();
+    for (const finding of findingList) {
+      if (!finding.photoBlob) continue;
       try {
-        const image = await doc.embedJpg(logoBytes);
-        logo = { image, width: image.width, height: image.height };
+        decodedPhotos.set(finding, await getOrientedPhotoSource(finding.photoBlob));
       } catch (err) {
-        logo = null; // fall back to text letterhead
+        decodedPhotos.set(finding, null);
       }
     }
 
-    const w = new ReportWriter(doc, fonts, logo);
-    const cfg = window.PHC_CONFIG;
+    /** Builds the full PDF at a given photo size/quality budget. */
+    async function buildDocument(photoSettings) {
+      const doc = await PDFDocument.create();
+      doc.setTitle(`${reportId} — ${visit.visitType}`);
+      doc.setProducer('RTEC PHC Field Reporting (offline)');
 
-    // ---------------------------------------------------------------
-    // Page 1 — visit summary (the playbook's established Page 1 logic)
-    // ---------------------------------------------------------------
-    w.text(cfg.reportTitle, { size: 17, font: fonts.bold, color: NAVY });
-    w.text(`${reportId}  ·  ${visit.visitType}  ·  Generated ${formatDateTime(new Date().toISOString())}`, {
-      size: 8.5,
-      color: MUTED,
-    });
-    w.y -= 6;
+      const fonts = {
+        regular: await doc.embedFont(StandardFonts.Helvetica),
+        bold: await doc.embedFont(StandardFonts.HelveticaBold),
+      };
 
-    // No general arborist-notification note at the top of the report —
-    // that context now lives on the specific finding that triggered it
-    // (see the finding loop below), which is more precise than a blanket
-    // statement at the top when only one of several findings needs it.
-
-    w.section('Visit Information');
-    w.paragraph('SingleOps Visit ID', visit.singleOpsVisitId);
-    w.paragraph('Client', visit.clientName);
-    w.paragraph('Property Address', visit.propertyAddress);
-    w.paragraph('Technician', visit.technician);
-    w.paragraph('Visit Date/Time', formatDateTime(visit.visitDateTime));
-
-    w.section('Services Performed');
-    w.paragraph('Services', (visit.servicesPerformed || []).join(', '));
-
-    w.section('Plants, Conditions, and Materials');
-    const entries = visit.plantEntries || [];
-    if (entries.length > 0) {
-      w.table(
-        [
-          { label: 'Plant / Area', width: CONTENT_WIDTH * 0.36 },
-          { label: 'Ornamental Pests / Conditions', width: CONTENT_WIDTH * 0.64 },
-        ],
-        entries.map((e) => [e.plantArea, conditionsCell(e)])
-      );
-    } else {
-      w.text('No plants/areas recorded.', { size: 10, color: MUTED });
-    }
-
-    w.section('Treatment Details');
-    w.fullText(null, visit.treatmentDetails);
-
-    w.section('Follow-Up Notes and Recommendations');
-    w.fullText(null, visit.followUpNotes && visit.followUpNotes.trim() ? visit.followUpNotes : '—');
-
-    // Flags: only worth a reader's attention when something was actually
-    // flagged. A routine visit with nothing pressing doesn't need a
-    // "No / No" section taking up space.
-    if (visit.pressingIssueObserved) {
-      w.section('Flags');
-      w.paragraph('Pressing Issue Observed', 'Yes');
-      w.paragraph('Arborist-Requested Photos', visit.arboristRequestedPhotos ? 'Yes' : 'No');
-    }
-
-    // ---------------------------------------------------------------
-    // Finding pages — one finding per page, only when findings exist
-    // (playbook section 4/6). No cap on how many findings a visit can
-    // have. The photo is sized to fill whatever room is left after its
-    // own text, rather than a fixed size, so the pair fits one page
-    // together.
-    // ---------------------------------------------------------------
-    w.currentSection = null; // finding pages carry their own heading, not a section band
-
-    if (findings && findings.length > 0) {
-      for (const finding of findings) {
-        w.newPage(true);
-        w.text(`Finding ${finding.sequence} of ${findings.length}`, { size: 15, font: fonts.bold, color: NAVY });
-
-        if (finding.arboristReviewRequired) {
-          w.wrappedText('Arborist has been notified of this finding. Please contact for further RTEC action.', {
-            size: 8.5,
-            color: ALERT_BORDER,
-            font: fonts.bold,
-          });
+      let logo = null;
+      const logoBytes = await loadLogoBytes();
+      if (logoBytes) {
+        try {
+          const image = await doc.embedJpg(logoBytes);
+          logo = { image, width: image.width, height: image.height };
+        } catch (err) {
+          logo = null; // fall back to text letterhead
         }
+      }
 
-        w.chip(finding.priority || 'Routine', PRIORITY_COLORS[finding.priority] || PRIORITY_COLORS.Routine);
-        w.hr(6);
+      const w = new ReportWriter(doc, fonts, logo);
+      const cfg = window.PHC_CONFIG;
 
-        if (finding.photoBlob) {
-          const maxW = CONTENT_WIDTH;
-          const bottomLimit = MARGIN + 24;
-          const estimatedTextHeight = estimateFindingTextHeight(fonts, finding);
-          const available = w.y - bottomLimit - estimatedTextHeight - 24;
-          const maxH = Math.max(140, Math.min(available, 480));
+      // ---------------------------------------------------------------
+      // Page 1 — visit summary (the playbook's established Page 1 logic)
+      // ---------------------------------------------------------------
+      w.text(cfg.reportTitle, { size: 17, font: fonts.bold, color: NAVY });
+      w.text(`${reportId}  ·  ${visit.visitType}  ·  Generated ${formatDateTime(new Date().toISOString())}`, {
+        size: 8.5,
+        color: MUTED,
+      });
+      w.y -= 6;
 
-          try {
-            const fitted = await embedFitted(doc, finding.photoBlob, finding.photoType, maxW, maxH);
-            w.ensureSpace(fitted.height + 16);
-            const x = MARGIN + (maxW - fitted.width) / 2;
-            const y = w.y - fitted.height;
-            w.page.drawRectangle({
-              x: x - 1,
-              y: y - 1,
-              width: fitted.width + 2,
-              height: fitted.height + 2,
-              borderColor: LINE,
-              borderWidth: 1,
-            });
-            w.page.drawImage(fitted.image, { x, y, width: fitted.width, height: fitted.height });
-            w.y -= fitted.height + 16;
-          } catch (err) {
-            w.text('[Photo could not be embedded — original is retained in the app.]', {
-              size: 9,
+      // No general arborist-notification note at the top of the report —
+      // that context now lives on the specific finding that triggered it
+      // (see the finding loop below), which is more precise than a blanket
+      // statement at the top when only one of several findings needs it.
+
+      w.section('Visit Information');
+      w.paragraph('SingleOps Visit ID', visit.singleOpsVisitId);
+      w.paragraph('Client', visit.clientName);
+      w.paragraph('Property Address', visit.propertyAddress);
+      w.paragraph('Technician', visit.technician);
+      w.paragraph('Visit Date/Time', formatDateTime(visit.visitDateTime));
+
+      w.section('Services Performed');
+      w.paragraph('Services', (visit.servicesPerformed || []).join(', '));
+
+      w.section('Plants, Conditions, and Materials');
+      const entries = visit.plantEntries || [];
+      if (entries.length > 0) {
+        w.table(
+          [
+            { label: 'Plant / Area', width: CONTENT_WIDTH * 0.36 },
+            { label: 'Ornamental Pests / Conditions', width: CONTENT_WIDTH * 0.64 },
+          ],
+          entries.map((e) => [e.plantArea, conditionsCell(e)])
+        );
+      } else {
+        w.text('No plants/areas recorded.', { size: 10, color: MUTED });
+      }
+
+      w.section('Treatment Details');
+      w.fullText(null, visit.treatmentDetails);
+
+      w.section('Follow-Up Notes and Recommendations');
+      w.fullText(null, visit.followUpNotes && visit.followUpNotes.trim() ? visit.followUpNotes : '—');
+
+      // Flags: only worth a reader's attention when something was actually
+      // flagged. A routine visit with nothing pressing doesn't need a
+      // "No / No" section taking up space.
+      if (visit.pressingIssueObserved) {
+        w.section('Flags');
+        w.paragraph('Pressing Issue Observed', 'Yes');
+        w.paragraph('Arborist-Requested Photos', visit.arboristRequestedPhotos ? 'Yes' : 'No');
+      }
+
+      // ---------------------------------------------------------------
+      // Finding pages — one finding per page, only when findings exist
+      // (playbook section 4/6). No cap on how many findings a visit can
+      // have. The photo is sized to fill whatever room is left after its
+      // own text, rather than a fixed size, so the pair fits one page
+      // together.
+      // ---------------------------------------------------------------
+      w.currentSection = null; // finding pages carry their own heading, not a section band
+
+      if (findingList.length > 0) {
+        for (const finding of findingList) {
+          w.newPage(true);
+          w.text(`Finding ${finding.sequence} of ${findingList.length}`, { size: 15, font: fonts.bold, color: NAVY });
+
+          if (finding.arboristReviewRequired) {
+            w.wrappedText('Arborist has been notified of this finding. Please contact for further RTEC action.', {
+              size: 8.5,
               color: ALERT_BORDER,
+              font: fonts.bold,
             });
           }
-        }
 
-        w.paragraph('Plant / Area', finding.plantArea, { labelWidth: FINDING_LABEL_WIDTH });
-        w.paragraph('Location', finding.location, { labelWidth: FINDING_LABEL_WIDTH });
-        w.paragraph('Observation', finding.observation, { labelWidth: FINDING_LABEL_WIDTH });
-        w.paragraph('Recommendation', finding.recommendation, { labelWidth: FINDING_LABEL_WIDTH });
+          w.chip(finding.priority || 'Routine', PRIORITY_COLORS[finding.priority] || PRIORITY_COLORS.Routine);
+          w.hr(6);
+
+          if (finding.photoBlob) {
+            const maxW = CONTENT_WIDTH;
+            const bottomLimit = MARGIN + 24;
+            const estimatedTextHeight = estimateFindingTextHeight(fonts, finding);
+            const available = w.y - bottomLimit - estimatedTextHeight - 24;
+            const maxH = Math.max(140, Math.min(available, 480));
+            const orientedPhoto = decodedPhotos.get(finding);
+
+            if (orientedPhoto) {
+              try {
+                const fitted = await embedFitted(doc, orientedPhoto, photoSettings, maxW, maxH);
+                w.ensureSpace(fitted.height + 16);
+                const x = MARGIN + (maxW - fitted.width) / 2;
+                const y = w.y - fitted.height;
+                w.page.drawRectangle({
+                  x: x - 1,
+                  y: y - 1,
+                  width: fitted.width + 2,
+                  height: fitted.height + 2,
+                  borderColor: LINE,
+                  borderWidth: 1,
+                });
+                w.page.drawImage(fitted.image, { x, y, width: fitted.width, height: fitted.height });
+                w.y -= fitted.height + 16;
+              } catch (err) {
+                w.text('[Photo could not be embedded — original is retained in the app.]', {
+                  size: 9,
+                  color: ALERT_BORDER,
+                });
+              }
+            } else {
+              w.text('[Photo could not be embedded — original is retained in the app.]', {
+                size: 9,
+                color: ALERT_BORDER,
+              });
+            }
+          }
+
+          w.paragraph('Plant / Area', finding.plantArea, { labelWidth: FINDING_LABEL_WIDTH });
+          w.paragraph('Location', finding.location, { labelWidth: FINDING_LABEL_WIDTH });
+          w.paragraph('Observation', finding.observation, { labelWidth: FINDING_LABEL_WIDTH });
+          w.paragraph('Recommendation', finding.recommendation, { labelWidth: FINDING_LABEL_WIDTH });
+        }
       }
+
+      w.finish(reportId);
+
+      return doc.save({ useObjectStreams: true });
     }
 
-    w.finish(reportId);
-
-    return doc.save();
+    let bytes = await buildDocument(PHOTO_SIZE_STEPS[0]);
+    for (let i = 1; i < PHOTO_SIZE_STEPS.length && bytes.length > MAX_PDF_BYTES; i++) {
+      bytes = await buildDocument(PHOTO_SIZE_STEPS[i]);
+    }
+    if (bytes.length > MAX_PDF_BYTES) {
+      console.warn(
+        `PHC report ${reportId}: could not compress under the 2.0 MB target (final size ${(bytes.length / 1e6).toFixed(2)} MB).`
+      );
+    }
+    return bytes;
   }
 
   /** Builds the report filename per the playbook's expression (section 1 / 5). */
