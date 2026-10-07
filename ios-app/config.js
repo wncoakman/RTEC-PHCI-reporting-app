@@ -16,6 +16,7 @@ window.PHC_CONFIG = {
     'Monitoring',
     'Root care',
     'Pruning',
+    'Tech Generated Lead',
     'Other',
   ],
 
