@@ -7,16 +7,18 @@
  * fallback that backfills the cache — and a same-origin-only guard so the
  * SW never tries to intercept a cross-origin request.
  *
- * Bump CACHE_VERSION whenever any shipped file changes, so returning
- * technicians pick up the update on next launch instead of running stale
- * cached code indefinitely.
+ * CACHE_VERSION comes from version.js (PHC_BUILD_VERSION) — the same file
+ * app.js displays on the home screen — so there's one place to bump per
+ * release, not two that can silently drift out of sync.
  */
-const CACHE_VERSION = 'phc-field-v7';
+importScripts('version.js');
+const CACHE_VERSION = self.PHC_BUILD_VERSION;
 
 const PRECACHE_URLS = [
   './',
   'index.html',
   'styles.css',
+  'version.js',
   'app.js',
   'config.js',
   'db.js',

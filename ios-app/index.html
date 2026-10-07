@@ -34,6 +34,7 @@
     <section data-screen="home" class="screen">
       <h1>Visits</h1>
       <p class="hint">Saved on this device only. Nothing leaves the iPad until you share a report.</p>
+      <p id="buildVersion" class="build-version"></p>
       <button id="btnNewVisit" class="btn btn--primary btn--full">+ New Visit</button>
       <ul id="visitList" class="visit-list"></ul>
       <p id="visitListEmpty" class="hint" hidden>No visits yet. Tap "New Visit" to start one.</p>
@@ -244,6 +245,7 @@
 
   </main>
 
+  <script src="version.js"></script>
   <script src="vendor/pdf-lib.min.js"></script>
   <script src="config.js"></script>
   <script src="db.js"></script>

@@ -673,6 +673,12 @@
 
   async function init() {
     updateNetBadge();
+    // Always reflects whatever code is actually running right now (unlike
+    // the update banner, this doesn't need a prior version to compare
+    // against) — the plain way to confirm two relaunches actually picked
+    // up a new build, by reading it off the screen rather than inferring
+    // it from a test report.
+    $('#buildVersion').textContent = 'Build ' + (window.PHC_BUILD_VERSION || 'unknown');
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
         .register('sw.js')
