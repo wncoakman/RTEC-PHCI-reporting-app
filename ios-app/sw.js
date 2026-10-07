@@ -30,6 +30,9 @@ const PRECACHE_URLS = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
+  // reset.html is deliberately NOT listed here -- it's the escape hatch for
+  // a device stuck on a stale cache, and a cached copy of the thing that
+  // clears the cache would defeat the point. Leave it uncached.
 ];
 
 self.addEventListener('install', (event) => {

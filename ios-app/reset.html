@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Reset App Cache</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 40px 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #eaf1f6;
+      color: #1c1f24;
+      text-align: center;
+    }
+    h1 { font-size: 1.1rem; color: #123a5c; }
+    p { color: #5b6470; font-size: 0.9rem; line-height: 1.5; }
+    a { color: #123a5c; }
+  </style>
+</head>
+<body>
+  <h1>Clearing cached app data…</h1>
+  <p id="status">One moment.</p>
+  <p><a id="manualLink" href="./index.html">Tap here if you're not redirected automatically.</a></p>
+
+  <script>
+    (async () => {
+      const statusEl = document.getElementById('status');
+      // Deliberately does NOT touch IndexedDB -- that's where unsent visit
+      // data lives. This only clears the offline file cache and the
+      // service worker registration that was serving it, which is the
+      // actual thing pinning the app to an old version.
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister()));
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map((k) => caches.delete(k)));
+        }
+        statusEl.textContent = 'Done. Opening the app fresh…';
+      } catch (err) {
+        statusEl.textContent = 'Something went wrong (' + (err && err.message) + '). Tap the link below.';
+        return;
+      }
+      setTimeout(() => {
+        window.location.href = './index.html';
+      }, 1000);
+    })();
+  </script>
+</body>
+</html>
