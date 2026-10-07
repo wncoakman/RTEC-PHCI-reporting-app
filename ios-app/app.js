@@ -56,8 +56,10 @@
     const visits = await Db.listVisits();
     const list = $('#visitList');
     const empty = $('#visitListEmpty');
+    const hint = $('#visitListHint');
     list.innerHTML = '';
     empty.hidden = visits.length > 0;
+    hint.hidden = visits.length === 0;
 
     visits.forEach((visit) => {
       const li = document.createElement('li');
@@ -104,10 +106,22 @@
     });
   }
 
-  /** Loads a visit into the Work Performed screen for editing, regardless of its status. */
-  function openForEditing(visit) {
+  /**
+   * Loads a visit for editing, regardless of its status. Tech Generated
+   * Lead has no Work Performed screen (see the formVisitStart handler
+   * below), so editing one goes straight to its findings/Decision screen
+   * instead.
+   */
+  async function openForEditing(visit) {
     state.visitId = visit.id;
     fillVisitStartForm(visit);
+
+    if (visit.visitType === 'Tech Generated Lead') {
+      await renderDecisionScreen(visit);
+      show('decision');
+      return;
+    }
+
     fillWorkForm(visit);
     show('work');
   }
@@ -126,13 +140,13 @@
       return;
     }
 
-    openForEditing(visit);
+    await openForEditing(visit);
   }
 
   async function editVisit(id) {
     const visit = await Db.getVisit(id);
     if (!visit) return;
-    openForEditing(visit);
+    await openForEditing(visit);
   }
 
   function escapeHtml(str) {
@@ -199,6 +213,18 @@
       ? await Db.updateVisit(state.visitId, data)
       : await Db.createVisit(data);
     state.visitId = visit.id;
+
+    // Tech Generated Lead has no services/treatment/plants to log -- it's
+    // purely a finding that may need arborist review -- so it skips Work
+    // Performed entirely and goes straight to adding that finding. The
+    // Decision screen is still rendered in the background (unseen) so it's
+    // populated correctly if the tech backs out via the finding editor's
+    // Cancel button.
+    if (visit.visitType === 'Tech Generated Lead') {
+      await renderDecisionScreen(visit);
+      openFindingEditor(null);
+      return;
+    }
 
     fillWorkForm(visit);
     show('work');

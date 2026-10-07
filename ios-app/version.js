@@ -9,4 +9,4 @@
  * Works in both contexts: `self` is the global object in both a plain
  * page script and a service worker (service workers have no `window`).
  */
-self.PHC_BUILD_VERSION = 'phc-field-v12';
+self.PHC_BUILD_VERSION = 'phc-field-v13';

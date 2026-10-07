@@ -65,9 +65,10 @@
     return { valid: errors.length === 0, errors };
   }
 
+  /** A Tech Generated Lead visit skips the Work Performed screen entirely (see app.js), so it has nothing to validate here. */
   function validateWorkPerformed(visit) {
     const errors = [];
-    if (!visit.servicesPerformed || visit.servicesPerformed.length === 0) {
+    if (visit.visitType !== 'Tech Generated Lead' && (!visit.servicesPerformed || visit.servicesPerformed.length === 0)) {
       errors.push('At least one service performed is required.');
     }
     return { valid: errors.length === 0, errors };

@@ -16,7 +16,6 @@ window.PHC_CONFIG = {
     'Monitoring',
     'Root care',
     'Pruning',
-    'Tech Generated Lead',
     'Other',
   ],
 
@@ -42,7 +41,7 @@ window.PHC_CONFIG = {
     'Other',
   ],
 
-  visitTypes: ['Targeted Treatment', 'Landscape Inspection'],
+  visitTypes: ['Targeted Treatment', 'Landscape Inspection', 'Tech Generated Lead'],
   priorityChoices: ['Routine', 'Prompt', 'Immediate'],
 
   reportTitle: 'PLANT HEALTH CARE VISIT REPORT',
