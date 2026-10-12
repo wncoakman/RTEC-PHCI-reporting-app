@@ -92,6 +92,26 @@ h1 {
   padding: 6px 0;
 }
 
+.app-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-bar__icon-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 4px;
+  opacity: 0.85;
+}
+
+.app-bar__icon-btn:disabled {
+  opacity: 0.4;
+}
+
 .net-badge {
   font-size: 0.72rem;
   padding: 4px 10px;

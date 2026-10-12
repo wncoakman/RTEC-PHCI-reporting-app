@@ -670,6 +670,47 @@
 
   $('#btnHome').addEventListener('click', goHome);
 
+  // Same nuke-and-reload approach as reset.html: unregistering the service
+  // worker and clearing the caches (not IndexedDB, so saved visits are
+  // untouched) is what actually guarantees a fresh fetch of everything on
+  // reload, rather than relying on the browser noticing sw.js changed.
+  $('#btnForceUpdate').addEventListener('click', async () => {
+    if (!confirm('Download the latest version of the app now?')) return;
+    const btn = $('#btnForceUpdate');
+    btn.disabled = true;
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister()));
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch (err) {
+      console.warn('Force update failed', err);
+    }
+    window.location.reload();
+  });
+
+  $('#btnBugReport').addEventListener('click', () => {
+    const feedback = window.prompt('Describe the bug or feedback. This opens your email app to send it.');
+    if (feedback === null || feedback.trim() === '') return;
+
+    const currentScreen = $('.screen:not([hidden])')?.dataset.screen || 'unknown';
+    const body = [
+      feedback.trim(),
+      '',
+      '---',
+      `Build: ${self.PHC_BUILD_VERSION || 'unknown'}`,
+      `Screen: ${currentScreen}`,
+      `When: ${new Date().toString()}`,
+    ].join('\n');
+
+    const mailto = `mailto:wncoakman@gmail.com?subject=${encodeURIComponent('PHC Field App Feedback')}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailto;
+  });
+
   $('#btnNewVisit').addEventListener('click', () => {
     state.visitId = null;
     $('#formVisitStart').reset();

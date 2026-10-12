@@ -19,7 +19,11 @@
 
   <header class="app-bar">
     <button id="btnHome" class="app-bar__home" aria-label="Home">RTEC PHCI Visit Report</button>
-    <span id="netBadge" class="net-badge">Offline-ready</span>
+    <div class="app-bar__right">
+      <button id="btnForceUpdate" class="app-bar__icon-btn" type="button" aria-label="Update app to latest version">⟳</button>
+      <button id="btnBugReport" class="app-bar__icon-btn" type="button" aria-label="Report a bug or send feedback">🐞</button>
+      <span id="netBadge" class="net-badge">Offline-ready</span>
+    </div>
   </header>
 
   <div id="updateBanner" class="update-banner" hidden role="status">
